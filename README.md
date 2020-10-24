@@ -8,3 +8,8 @@ Dependencies assume compilation on Linux (Ubuntu). Tested on Ubuntu 20.04 and CU
 - freeGLUT
     > sudo apt-get install freeglut3-dev
 - CUDA
+
+CLion
+=====
+CLion requires to set the enviroment variable for CUDA compiler:
+> CUDACXX=/usr/local/cuda-11.0/bin/nvcc 
