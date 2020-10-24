@@ -1,6 +1,6 @@
 Dependencies
 ============
-Dependencies assume compilation on Linux (Ubuntu).
+Dependencies assume compilation on Linux (Ubuntu). Tested on Ubuntu 20.04 and CUDA 11.0.
 
 - CMake 3.16
 - OpenGL
