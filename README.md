@@ -1,6 +1,6 @@
 Dependencies
 ============
-Dependencies assume compilation on Linux.
+Dependencies assume compilation on Linux (Ubuntu).
 
 - CMake 3.16
 - OpenGL
