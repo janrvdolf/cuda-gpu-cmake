@@ -1,9 +1,10 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.16)
 project(untitled1 CUDA)
 
 set(CMAKE_CUDA_STANDARD 14)
+set(CUDACXX /usr/local/cuda-11.0/bin/nvcc)
 
-#set(CUDACXX /usr/local/cuda-10.0/bin/nvcc)
+set(CMAKE_CUDA_COMPILER /usr/local/cuda-11.0/bin/nvcc)
 
 add_executable(untitled1 main.cu)
 
