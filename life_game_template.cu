@@ -261,9 +261,9 @@ __global__ void countCells(BYTE* in, int *livingCellsCount, int width, int heigh
     int col = blockIdx.x*blockDim.x + threadIdx.x;
     int row = blockIdx.y*blockDim.y + threadIdx.y;
     int rowAddr = row * width;
-    int threadID_global = rowAddr + col; 
+    int threadID_global = rowAddr + col;
 
-    int threadID = blockDim.y * threadIdx.y + threadIdx.x;
+    int threadID = blockDim.x * threadIdx.y + threadIdx.x;
 
     unsigned int step = 0;
 
@@ -276,7 +276,7 @@ __global__ void countCells(BYTE* in, int *livingCellsCount, int width, int heigh
         __syncthreads();
 
 	// paralelni reducke
-        for (step = 1; step < blockDim.x; step *= 2) {
+        for (step = 1; step < blockDim.x*blockDim.y; step *= 2)  {
             if (threadID % (2 * step) == 0) {
                 cache[threadID] += cache[threadID + step];
             }
