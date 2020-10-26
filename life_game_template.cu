@@ -254,40 +254,40 @@ void lifeKernelCW2(uchar4* bitmap, BYTE* in, BYTE* out, int width, int height){
  *  width - sirka simulacni mrizky
  *  height - vyska simulacni mrizky
  */
-__global__ void countCells(BYTE* in, int *livingCellsCount, int width, int height){
+__global__ void countCells(BYTE* in, int *living_cells_count, int width, int height){
     // pole ve sdilene pameti pro ulozeni hodnot budek a nasledny vypocet paralelni redukce
     extern __shared__ int cache[];
 
     int col = blockIdx.x*blockDim.x + threadIdx.x;
     int row = blockIdx.y*blockDim.y + threadIdx.y;
     int rowAddr = row * width;
-    int threadID_global = rowAddr + col;
+    int global_mem_thread_idx = rowAddr + col;
 
-    int threadID = blockDim.x * threadIdx.y + threadIdx.x;
+    int thread_id = blockDim.x * threadIdx.y + threadIdx.x;
 
     unsigned int step = 0;
 
-	// nacteni hodnoty do sdilene pameti
-        if (threadID < width*height && in[threadID_global] == 1) {
-            cache[threadID] = 1;
-        } else {
-            cache[threadID] = 0;
-        }
-        __syncthreads();
+	// load a value into shared memory
+	if (thread_id < width*height) {
+	    // writing to shared memory of a block `cache` from the global memory `in`
+	    cache[thread_id] = in[global_mem_thread_idx];
+	}
+	__syncthreads();
 
-	// paralelni reducke
-        for (step = 1; step < blockDim.x*blockDim.y; step *= 2)  {
-            if (threadID % (2 * step) == 0) {
-                cache[threadID] += cache[threadID + step];
-            }
+	// parallel reduction
+	for (step = 1; step < blockDim.x*blockDim.y; step *= 2)  {
+	    // parallel sum reduction, rewriting values in shared memory `cache`
+	    if (thread_id % (2 * step) == 0) {
+	        cache[thread_id] += cache[thread_id + step];
+	    }
+	    __syncthreads();
+	}
 
-            __syncthreads();
-        }
-
-        // zapis provadi pouze prvni vlakno v bloku
-        if (threadID == 0) {
-            atomicAdd(livingCellsCount, cache[0]);
-        }
+	// add the final sum from parallel reduction added to the global memory integer `livingCellsCount` (the first thread of the block does it)
+	if (thread_id == 0) {
+	    // atomic addition
+	    atomicAdd(living_cells_count, cache[0]);
+	}
 }
 
 
