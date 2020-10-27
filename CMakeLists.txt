@@ -29,10 +29,15 @@ set_target_properties(
 
 
 add_executable(life_game life_game_template.cu)
-
 set_target_properties(
         life_game
         PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON)
-
 target_link_libraries(life_game ${OPENGL_LIBRARIES} ${GLUT_LIBRARY})
+
+add_executable(exercise05 exercise05/exercise05.cu)
+set_target_properties(
+        exercise05
+        PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON)
+target_link_libraries(exercise05 ${OPENGL_LIBRARIES} ${GLUT_LIBRARY})
