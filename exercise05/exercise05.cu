@@ -348,13 +348,18 @@ void lifeKernelCW2(uchar4* bitmap, BYTE* in, BYTE* out, int width, int height){
 __global__ void lifeKernel3(uchar4* bitmap, BYTE* out, int width, int height){
 
     // DOPLNTE !!!
-
     int col = blockIdx.x*blockDim.x + threadIdx.x;
     int row = blockIdx.y*blockDim.y + threadIdx.y;
     int rowAddr = row * width;
     int threadID = rowAddr + col;	// index vlakna
 
+    float coord_per_block_horizontal = (float) width / BLOCK_DIMENSION;
+    float coord_per_block_vertical = (float) height / BLOCK_DIMENSION;
+
+    int neighbors = 0;
+
     if(threadID < width*height) {
+        neighbors += tex2D(texRef, 0.1, 0.1);
 
     }
 }
@@ -540,11 +545,10 @@ void initializeCUDA(void) {
     // DOPLNTE !!!!
     // nastaveni parametru textury \96 zpusob filtrovani, zpracovani hodnot mimo rozsah, \85
     // texRef.addressMode ...
-    texRef.normalized = cudaReadModeNormalizedFloat;
+    texRef.normalized = true;
     texRef.filterMode = cudaFilterModePoint;
     texRef.addressMode[0] = cudaAddressModeWrap;
     texRef.addressMode[1] = cudaAddressModeWrap;
-    texRef.addressMode[3] = cudaAddressModeWrap;
 
     // svazani reference na texturu se skutecnymi daty
     cudaBindTextureToArray(texRef, cuArray, channelDesc);
