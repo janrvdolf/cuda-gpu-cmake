@@ -22,9 +22,9 @@
 
 using namespace std;
 
-#define LIFE_GLOBAL_MEMORY
+//#define LIFE_GLOBAL_MEMORY  // UNCOMMENT TO RUN COUNTING
 //#define LIFE_SHARED_MEMORY
-//#define LIFE_TEXTURE_MEMORY
+#define LIFE_TEXTURE_MEMORY
 
 // odkomentujte pro pouzivani operace modulo pri adresaci globalni pameti
 // pri zakomentovani je modulo nahrazeno podminkami
@@ -497,30 +497,25 @@ __global__ void lifeKernel3(uchar4* bitmap, BYTE* out, int width, int height){
     if(threadID >= width*height)
         return;
 
-    float coord_per_block_horizontal = (float) width / (float) BLOCK_DIMENSION;
-    float coord_per_thread_horizontal = (float) coord_per_block_horizontal / (float)BLOCK_DIMENSION;
-    float coord_per_thread_horizontal_half = (float)coord_per_thread_horizontal / 2.0f;
-    float coord_per_block_vertical = (float) height / (float)BLOCK_DIMENSION;
-    float coord_per_thread_vertical = (float)coord_per_block_vertical / (float)BLOCK_DIMENSION;
-    float coord_per_thread_vertical_half = (float) coord_per_thread_vertical / 2.0f;
+    float coord_horizontal = 1.0f / (float) width;
+    float coord_vertical = 1.0f / (float) height;
+    float coord_horizontal_half =  coord_horizontal / 2;
+    float coord_vertical_half = coord_vertical / 2;
+
+    float x = ((float) col / (float) width) + coord_horizontal_half;
+    float y = ((float) row / (float) height) + coord_vertical_half;
 
 
-    float x = (float) blockIdx.x * coord_per_block_horizontal + threadIdx.x * coord_per_thread_horizontal + coord_per_thread_horizontal_half;
-    float y = (float) blockIdx.y * coord_per_block_vertical + threadIdx.y * coord_per_thread_vertical + coord_per_thread_vertical_half;
-
-
-    BYTE neighbours = tex2D(texRef, x - coord_per_block_horizontal, y - coord_per_block_vertical);
-    neighbours += tex2D(texRef, x, y - coord_per_block_horizontal);
-    neighbours += tex2D(texRef, x  + coord_per_block_horizontal, y - coord_per_block_vertical);
-    neighbours += tex2D(texRef, x + coord_per_block_horizontal, y);
-    neighbours += tex2D(texRef, x + coord_per_block_horizontal, y + coord_per_block_vertical);
-    neighbours += tex2D(texRef, x, y + coord_per_block_vertical);
-    neighbours += tex2D(texRef, x, y + coord_per_block_vertical);
-    neighbours += tex2D(texRef, x - coord_per_block_horizontal, y + coord_per_block_vertical);
-    neighbours += tex2D(texRef, x - coord_per_block_horizontal, y);
+    int neighbours = tex2D(texRef, x - coord_horizontal, y - coord_vertical);
+    neighbours += tex2D(texRef, x, y - coord_vertical);
+    neighbours += tex2D(texRef, x  + coord_horizontal, y - coord_vertical);
+    neighbours += tex2D(texRef, x + coord_horizontal, y);
+    neighbours += tex2D(texRef, x + coord_horizontal, y + coord_vertical);
+    neighbours += tex2D(texRef, x, y + coord_vertical);
+    neighbours += tex2D(texRef, x - coord_horizontal, y + coord_vertical);
+    neighbours += tex2D(texRef, x - coord_horizontal, y);
 
     // vypocet nove hodnoty dle tabulky ulozene v konstantni pameti
-//    BYTE oldValue = in[threadID];
     BYTE oldValue = tex2D(texRef, x, y);
     BYTE newValue = newState[neighbours + 9*oldValue];
 
@@ -687,10 +682,12 @@ void initializeCUDA(void) {
 
     CHECK_ERROR( cudaMalloc( (void**)&(devLivingCells), sizeof(int) ) );
 
+    #ifdef LIFE_GLOBAL_MEMORY
     CHECK_ERROR( cudaMalloc( (void**)&(devCntBlock), sizeof(int) ) );
     CHECK_ERROR( cudaMalloc( (void**)&(devCntBeeHive), sizeof(int) ) );
     CHECK_ERROR( cudaMalloc( (void**)&(devCntLoaf), sizeof(int) ) );
     CHECK_ERROR( cudaMalloc( (void**)&(devCntBoat), sizeof(int) ) );
+    #endif
 
     cpuLife1 = (BYTE *)malloc(bitmapSize*sizeof(BYTE));
     cpuLife2 = (BYTE *)malloc(bitmapSize*sizeof(BYTE));
