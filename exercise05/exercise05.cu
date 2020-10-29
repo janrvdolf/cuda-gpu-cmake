@@ -28,7 +28,7 @@ using namespace std;
 
 // odkomentujte pro pouzivani operace modulo pri adresaci globalni pameti
 // pri zakomentovani je modulo nahrazeno podminkami
-// #define GLOBAL_MEMORY_USE_MODULO
+//#define GLOBAL_MEMORY_USE_MODULO
 
 // rozliseni bitmapy a simulacni mrizky
 #define IMAGE_WIDTH  768 // 512
@@ -346,22 +346,48 @@ void lifeKernelCW2(uchar4* bitmap, BYTE* in, BYTE* out, int width, int height){
  *  height - vyska simulacni mrizky
  */
 __global__ void lifeKernel3(uchar4* bitmap, BYTE* out, int width, int height){
-
     // DOPLNTE !!!
     int col = blockIdx.x*blockDim.x + threadIdx.x;
     int row = blockIdx.y*blockDim.y + threadIdx.y;
     int rowAddr = row * width;
-    int threadID = rowAddr + col;	// index vlakna
+    int threadID = rowAddr + col;
+
+    if(threadID >= width*height)
+        return;
 
     float coord_per_block_horizontal = (float) width / BLOCK_DIMENSION;
+    float coord_per_thread_horizontal = coord_per_block_horizontal / BLOCK_DIMENSION;
+    float coord_per_thread_horizontal_half = coord_per_thread_horizontal / 2;
     float coord_per_block_vertical = (float) height / BLOCK_DIMENSION;
+    float coord_per_thread_vertical = coord_per_block_vertical / BLOCK_DIMENSION;
+    float coord_per_thread_vertical_half = coord_per_thread_vertical / 2;
 
-    int neighbors = 0;
+    BYTE neighbours = 0;
 
-    if(threadID < width*height) {
-        neighbors += tex2D(texRef, 0.1, 0.1);
+    float x = blockIdx.x * coord_per_block_horizontal + threadIdx.x * coord_per_thread_horizontal + coord_per_thread_horizontal_half;
+    float y = blockIdx.y * coord_per_block_vertical + threadIdx.y * coord_per_thread_vertical + coord_per_thread_vertical_half;
 
-    }
+    neighbours += tex2D(texRef, x - coord_per_block_horizontal, y - coord_per_block_vertical);
+    neighbours += tex2D(texRef, x, y - coord_per_block_horizontal);
+    neighbours += tex2D(texRef, x  + coord_per_block_horizontal, y - coord_per_block_vertical);
+    neighbours += tex2D(texRef, x + coord_per_block_horizontal, y);
+    neighbours += tex2D(texRef, x + coord_per_block_horizontal, y + coord_per_block_vertical);
+    neighbours += tex2D(texRef, x, y + coord_per_block_vertical);
+    neighbours += tex2D(texRef, x, y + coord_per_block_vertical);
+    neighbours += tex2D(texRef, x - coord_per_block_horizontal, y + coord_per_block_vertical);
+    neighbours += tex2D(texRef, x - coord_per_block_horizontal, y);
+
+    // vypocet nove hodnoty dle tabulky ulozene v konstantni pameti
+//    BYTE oldValue = in[threadID];
+    BYTE oldValue = (BYTE) tex2D(texRef, x, y);
+    BYTE newValue = newState[neighbours + 9*oldValue];
+
+    // ulozeni noveho stavu bunky
+    out[threadID] = newValue;
+
+    // nastaveni barvy pixelu v bitmape dle oldValue a newValue
+    stateToColor(oldValue, newValue, bitmap, threadID);
+
 }
 
 // funkce pro spusteni kernelu se sdilenou pameti
@@ -546,9 +572,9 @@ void initializeCUDA(void) {
     // nastaveni parametru textury \96 zpusob filtrovani, zpracovani hodnot mimo rozsah, \85
     // texRef.addressMode ...
     texRef.normalized = true;
-    texRef.filterMode = cudaFilterModePoint;
     texRef.addressMode[0] = cudaAddressModeWrap;
     texRef.addressMode[1] = cudaAddressModeWrap;
+    texRef.filterMode = cudaFilterModePoint;
 
     // svazani reference na texturu se skutecnymi daty
     cudaBindTextureToArray(texRef, cuArray, channelDesc);
