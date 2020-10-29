@@ -22,13 +22,13 @@
 
 using namespace std;
 
-//#define LIFE_GLOBAL_MEMORY
+#define LIFE_GLOBAL_MEMORY
 //#define LIFE_SHARED_MEMORY
-#define LIFE_TEXTURE_MEMORY
+//#define LIFE_TEXTURE_MEMORY
 
 // odkomentujte pro pouzivani operace modulo pri adresaci globalni pameti
 // pri zakomentovani je modulo nahrazeno podminkami
-//#define GLOBAL_MEMORY_USE_MODULO
+#define GLOBAL_MEMORY_USE_MODULO
 
 // rozliseni bitmapy a simulacni mrizky
 #define IMAGE_WIDTH  768 // 512
@@ -46,7 +46,7 @@ __constant__ BYTE newState[18];
 
 #ifdef LIFE_TEXTURE_MEMORY
 cudaArray *cuArray;
-texture<BYTE, 2, cudaReadModeElementType> texRef;
+texture<BYTE, cudaTextureType2D, cudaReadModeElementType> texRef;
 #endif
 
 // pocet zivych bunek v aktualni generaci
@@ -173,6 +173,119 @@ inline __device__ void stateToColor(BYTE oldValue, BYTE newValue, uchar4* bitmap
 
 #ifdef LIFE_GLOBAL_MEMORY
 
+//Block
+int *devCntBlock = NULL;
+int cntBlock = 0;
+__constant__ int constMaskBlock[4*4+2];
+//BeeHive
+int *devCntBeeHive = NULL;
+int cntBeeHive = 0;
+__constant__ int constMaskBeeHive[6*5+2];
+//Loaf
+int *devCntLoaf = NULL;
+int cntLoaf = 0;
+__constant__ int constMaskLoaf[6*6+2];
+//Boat
+int *devCntBoat = NULL;
+int cntBoat = 0;
+__constant__ int constMaskBoat[5*5+2];
+
+
+
+__global__ void mujKernel(BYTE* in, int *counterBlock, int *counterBeeHive, int *counterLoaf, int *counterBoat, int width, int height) {
+    int col = blockIdx.x*blockDim.x + threadIdx.x;
+    int row = blockIdx.y*blockDim.y + threadIdx.y;
+    int rowAddr = row * width;
+    int threadID = rowAddr + col;	// index vlakna
+
+    if(threadID < width*height) {
+        // Block
+        int maskFits = 1;
+        int maskBlockWidth = constMaskBlock[0];
+        int maskBlockHeight = constMaskBlock[1];
+        for (int y = 0; y < maskBlockHeight; y++) {
+            for (int x = 0; x < maskBlockWidth; x++) {
+                int tmp_col = (col + x) % width;
+                int tmp_row = (row + y) % height;
+
+                int mask_idx = y*maskBlockWidth + x + 2;
+                int in_idx = tmp_row*width+tmp_col;
+
+                if (in[in_idx] != constMaskBlock[mask_idx]) {
+                    maskFits = 0;
+                    break;
+                }
+            }
+        }
+        if (maskFits) {
+            atomicAdd(counterBlock, 1);
+        }
+        // BeeHive
+        maskFits = 1;
+        maskBlockWidth = constMaskBeeHive[0];
+        maskBlockHeight = constMaskBeeHive[1];
+        for (int y = 0; y < maskBlockHeight; y++) {
+            for (int x = 0; x < maskBlockWidth; x++) {
+                int tmp_col = (col + x) % width;
+                int tmp_row = (row + y) % height;
+
+                int mask_idx = y*maskBlockWidth + x + 2;
+                int in_idx = tmp_row*width+tmp_col;
+
+                if (in[in_idx] != constMaskBeeHive[mask_idx]) {
+                    maskFits = 0;
+                    break;
+                }
+            }
+        }
+        if (maskFits) {
+            atomicAdd(counterBeeHive, 1);
+        }
+        // Loaf
+        maskFits = 1;
+        maskBlockWidth = constMaskLoaf[0];
+        maskBlockHeight = constMaskLoaf[1];
+        for (int y = 0; y < maskBlockHeight; y++) {
+            for (int x = 0; x < maskBlockWidth; x++) {
+                int tmp_col = (col + x) % width;
+                int tmp_row = (row + y) % height;
+
+                int mask_idx = y*maskBlockWidth + x + 2;
+                int in_idx = tmp_row*width+tmp_col;
+
+                if (in[in_idx] != constMaskLoaf[mask_idx]) {
+                    maskFits = 0;
+                    break;
+                }
+            }
+        }
+        if (maskFits) {
+            atomicAdd(counterLoaf, 1);
+        }
+        // Boat
+        maskFits = 1;
+        maskBlockWidth = constMaskBoat[0];
+        maskBlockHeight = constMaskBoat[1];
+        for (int y = 0; y < maskBlockHeight; y++) {
+            for (int x = 0; x < maskBlockWidth; x++) {
+                int tmp_col = (col + x) % width;
+                int tmp_row = (row + y) % height;
+
+                int mask_idx = y*maskBlockWidth + x + 2;
+                int in_idx = tmp_row*width+tmp_col;
+
+                if (in[in_idx] != constMaskBoat[mask_idx]) {
+                    maskFits = 0;
+                    break;
+                }
+            }
+        }
+        if (maskFits) {
+            atomicAdd(counterBoat, 1);
+        }
+    }
+}
+
 /* kernel zajistujici aktualizaci simulace - verze s globalni pameti
  *  bitmap - bitmapa, ktera se meni dle vzniku a zaniku bunek
  *  in - vstupni simulacni mrizka
@@ -231,10 +344,39 @@ __global__ void lifeKernel1(uchar4* bitmap, BYTE* in, BYTE* out, int width, int 
   }
 }
 
+
 // funkce pro spusteni kernelu vyuzivajiciho pouze globalni pamet
 void lifeKernelCW1(uchar4* bitmap, BYTE* in,BYTE* out, int width, int height){
 
   lifeKernel1<<<blocks,threads>>>(bitmap, in, out, width, height);
+
+  int mask_block[4*4+2] = {4, 4, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0};
+  int mask_bee_hive[6*5+2] = {6, 5, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0};
+  int mask_loaf[6*6+2] = {6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0};
+  int mask_boat[5*5+2] = {5, 5, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0};
+
+  CHECK_ERROR( cudaMemset( devCntBlock, 0, sizeof(int) ) );
+  CHECK_ERROR( cudaMemset( devCntBeeHive, 0, sizeof(int) ) );
+  CHECK_ERROR( cudaMemset( devCntLoaf, 0, sizeof(int) ) );
+  CHECK_ERROR( cudaMemset( devCntBoat, 0, sizeof(int) ) );
+
+  cudaMemcpyToSymbol(constMaskBlock, mask_block, sizeof(int)*(4*4+2));
+  cudaMemcpyToSymbol(constMaskBeeHive, mask_bee_hive, sizeof(int)*(6*5+2));
+  cudaMemcpyToSymbol(constMaskLoaf, mask_loaf, sizeof(int)*(6*6+2));
+  cudaMemcpyToSymbol(constMaskBoat, mask_boat, sizeof(int)*(5*5+2));
+
+  mujKernel<<<blocks, threads>>>(out, devCntBlock, devCntBeeHive, devCntLoaf, devCntBoat, width, height);
+
+  cudaMemcpy( &cntBlock, devCntBlock, sizeof(int), cudaMemcpyDeviceToHost );
+  cudaMemcpy( &cntBeeHive, devCntBeeHive, sizeof(int), cudaMemcpyDeviceToHost );
+  cudaMemcpy( &cntLoaf, devCntLoaf, sizeof(int), cudaMemcpyDeviceToHost );
+  cudaMemcpy( &cntBoat, devCntBoat, sizeof(int), cudaMemcpyDeviceToHost );
+
+
+  std::cout << "Blocks count (GPU): " << cntBlock << std::endl;
+  std::cout << "BeeHive count (GPU): " << cntBeeHive << std::endl;
+  std::cout << "Loaf count (GPU): " << cntLoaf << std::endl;
+  std::cout << "Boat count (GPU): " << cntBoat << std::endl;
 }
 
 #endif
@@ -355,19 +497,19 @@ __global__ void lifeKernel3(uchar4* bitmap, BYTE* out, int width, int height){
     if(threadID >= width*height)
         return;
 
-    float coord_per_block_horizontal = (float) width / BLOCK_DIMENSION;
-    float coord_per_thread_horizontal = coord_per_block_horizontal / BLOCK_DIMENSION;
-    float coord_per_thread_horizontal_half = coord_per_thread_horizontal / 2;
-    float coord_per_block_vertical = (float) height / BLOCK_DIMENSION;
-    float coord_per_thread_vertical = coord_per_block_vertical / BLOCK_DIMENSION;
-    float coord_per_thread_vertical_half = coord_per_thread_vertical / 2;
+    float coord_per_block_horizontal = (float) width / (float) BLOCK_DIMENSION;
+    float coord_per_thread_horizontal = (float) coord_per_block_horizontal / (float)BLOCK_DIMENSION;
+    float coord_per_thread_horizontal_half = (float)coord_per_thread_horizontal / 2.0f;
+    float coord_per_block_vertical = (float) height / (float)BLOCK_DIMENSION;
+    float coord_per_thread_vertical = (float)coord_per_block_vertical / (float)BLOCK_DIMENSION;
+    float coord_per_thread_vertical_half = (float) coord_per_thread_vertical / 2.0f;
 
-    BYTE neighbours = 0;
 
-    float x = blockIdx.x * coord_per_block_horizontal + threadIdx.x * coord_per_thread_horizontal + coord_per_thread_horizontal_half;
-    float y = blockIdx.y * coord_per_block_vertical + threadIdx.y * coord_per_thread_vertical + coord_per_thread_vertical_half;
+    float x = (float) blockIdx.x * coord_per_block_horizontal + threadIdx.x * coord_per_thread_horizontal + coord_per_thread_horizontal_half;
+    float y = (float) blockIdx.y * coord_per_block_vertical + threadIdx.y * coord_per_thread_vertical + coord_per_thread_vertical_half;
 
-    neighbours += tex2D(texRef, x - coord_per_block_horizontal, y - coord_per_block_vertical);
+
+    BYTE neighbours = tex2D(texRef, x - coord_per_block_horizontal, y - coord_per_block_vertical);
     neighbours += tex2D(texRef, x, y - coord_per_block_horizontal);
     neighbours += tex2D(texRef, x  + coord_per_block_horizontal, y - coord_per_block_vertical);
     neighbours += tex2D(texRef, x + coord_per_block_horizontal, y);
@@ -379,7 +521,7 @@ __global__ void lifeKernel3(uchar4* bitmap, BYTE* out, int width, int height){
 
     // vypocet nove hodnoty dle tabulky ulozene v konstantni pameti
 //    BYTE oldValue = in[threadID];
-    BYTE oldValue = (BYTE) tex2D(texRef, x, y);
+    BYTE oldValue = tex2D(texRef, x, y);
     BYTE newValue = newState[neighbours + 9*oldValue];
 
     // ulozeni noveho stavu bunky
@@ -544,6 +686,11 @@ void initializeCUDA(void) {
     CHECK_ERROR( cudaMalloc( (void**)&(life2), bitmapSize*sizeof(BYTE) ) );
 
     CHECK_ERROR( cudaMalloc( (void**)&(devLivingCells), sizeof(int) ) );
+
+    CHECK_ERROR( cudaMalloc( (void**)&(devCntBlock), sizeof(int) ) );
+    CHECK_ERROR( cudaMalloc( (void**)&(devCntBeeHive), sizeof(int) ) );
+    CHECK_ERROR( cudaMalloc( (void**)&(devCntLoaf), sizeof(int) ) );
+    CHECK_ERROR( cudaMalloc( (void**)&(devCntBoat), sizeof(int) ) );
 
     cpuLife1 = (BYTE *)malloc(bitmapSize*sizeof(BYTE));
     cpuLife2 = (BYTE *)malloc(bitmapSize*sizeof(BYTE));
